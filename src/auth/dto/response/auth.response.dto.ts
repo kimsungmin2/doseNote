@@ -9,8 +9,14 @@ export class AuthResponseDto {
   user: UserInfoResponseDto;
 
   @ApiProperty({
-    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access...',
     description: 'Access Token',
   })
   accessToken: string;
+
+  @ApiProperty({
+    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh...',
+    description: 'Refresh Token',
+  })
+  refreshToken: string;
 }
