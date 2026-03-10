@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DoseUnit {
+  MG
+  ML
+  UNIT
+}
+
+enum InjectionSite {
+  ABDOMEN
+  THIGH
+  UPPER_ARM
+  OTHER
+}
+
+enum SymptomType {
+  NAUSEA
+  HEADACHE
+  CONSTIPATION
+  DIARRHEA
+  FATIGUE
+  APPETITE_LOSS
+  DIZZINESS
+  OTHER
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  passwordHash       String              @map("password_hash")
+  nickname           String
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
+
+  medicationProfiles MedicationProfile[]
+  injectionRecords   InjectionRecord[]
+  weightRecords      WeightRecord[]
+  symptomRecords     SymptomRecord[]
+  refreshTokens      RefreshToken[]
+
+  @@map("users")
+}
+
+model MedicationProfile {
+  id                 String            @id @default(cuid())
+  userId             String            @map("user_id")
+  medicationName     String            @map("medication_name")
+  defaultDosageValue Decimal           @db.Decimal(6, 2) @map("default_dosage_value")
+  defaultDosageUnit  DoseUnit          @map("default_dosage_unit")
+  scheduleIntervalDays Int             @map("schedule_interval_days")
+  startDate          DateTime          @map("start_date")
+  notes              String?
+  isActive           Boolean           @default(true) @map("is_active")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  user               User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  injectionRecords   InjectionRecord[]
+
+  @@index([userId, isActive])
+  @@index([userId, createdAt])
+  @@map("medication_profiles")
+}
+
+model InjectionRecord {
+  id                 String            @id @default(cuid())
+  userId             String            @map("user_id")
+  medicationProfileId String           @map("medication_profile_id")
+  injectedAt         DateTime          @map("injected_at")
+  dosageValue        Decimal           @db.Decimal(6, 2) @map("dosage_value")
+  dosageUnit         DoseUnit          @map("dosage_unit")
+  injectionSite      InjectionSite     @map("injection_site")
+  memo               String?
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  deletedAt          DateTime?         @map("deleted_at")
+
+  user               User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  medicationProfile  MedicationProfile @relation(fields: [medicationProfileId], references: [id], onDelete: Restrict)
+  symptomRecords     SymptomRecord[]
+
+  @@index([userId, injectedAt(sort: Desc)])
+  @@index([medicationProfileId, injectedAt(sort: Desc)])
+  @@map("injection_records")
+}
+
+model WeightRecord {
+  id                 String           @id @default(cuid())
+  userId             String           @map("user_id")
+  recordedAt         DateTime         @map("recorded_at")
+  weightKg           Decimal          @db.Decimal(5, 2) @map("weight_kg")
+  memo               String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  deletedAt          DateTime?        @map("deleted_at")
+
+  user               User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, recordedAt(sort: Desc)])
+  @@map("weight_records")
+}
+
+model SymptomRecord {
+  id                 String           @id @default(cuid())
+  userId             String           @map("user_id")
+  injectionRecordId  String?          @map("injection_record_id")
+  symptomType        SymptomType      @map("symptom_type")
+  severity           Int
+  recordedAt         DateTime         @map("recorded_at")
+  memo               String?
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  deletedAt          DateTime?        @map("deleted_at")
+
+  user               User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  injectionRecord    InjectionRecord? @relation(fields: [injectionRecordId], references: [id], onDelete: SetNull)
+
+  @@index([userId, recordedAt(sort: Desc)])
+  @@index([injectionRecordId, recordedAt(sort: Desc)])
+  @@map("symptom_records")
+}
+
+model RefreshToken {
+  id                 String           @id @default(cuid())
+  userId             String           @map("user_id")
+  tokenHash          String           @map("token_hash")
+  expiresAt          DateTime         @map("expires_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  revokedAt          DateTime?        @map("revoked_at")
+
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
