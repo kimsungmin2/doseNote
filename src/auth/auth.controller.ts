@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Post,
@@ -22,6 +23,7 @@ import { AuthResponseDto } from './dto/response/auth.response.dto';
 import { LogoutResponseDto } from './dto/response/logout.response.dto';
 import { UserInfoResponseDto } from './dto/response/user-info.response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { CurrentUserData } from './interfaces/current-user.interface';
 
 @ApiTags('Auth')
@@ -58,14 +60,21 @@ export class AuthController {
   @ApiOperation({
     summary: '토큰 재발급',
   })
+  @ApiBearerAuth()
   @ApiResponse({
     status: 200,
     type: AuthResponseDto,
   })
+  @UseGuards(JwtRefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshTokenRequestDto): Promise<AuthResponseDto> {
-    return this.authService.refresh(dto);
+  async refresh(
+    @CurrentUser() user: CurrentUserData,
+    @Headers('authorization') authorization?: string,
+  ): Promise<AuthResponseDto> {
+    const refreshToken = authorization?.replace('Bearer ', '') ?? '';
+
+    return this.authService.refresh(user.id, user.tokenId ?? '', refreshToken);
   }
 
   @ApiOperation({

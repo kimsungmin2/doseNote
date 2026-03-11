@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { User } from '@prisma/client';
+import { RefreshToken, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { AUTH_MESSAGES } from './auth.constants';
@@ -15,7 +15,7 @@ import { RefreshTokenRequestDto } from './dto/request/refresh-token-request.dto'
 import { SignupRequestDto } from './dto/request/signup-request.dto';
 import { AuthResponseDto } from './dto/response/auth.response.dto';
 import { UserInfoResponseDto } from './dto/response/user-info.response.dto';
-import { JwtPayload } from '../utils/interfaces/jwt-payload.interface';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Injectable()
 export class AuthService {
@@ -63,25 +63,16 @@ export class AuthService {
     return this.issueAuthTokens(user);
   }
 
-  async refresh(dto: RefreshTokenRequestDto): Promise<AuthResponseDto> {
-    const payload = await this.verifyRefreshToken(dto.refreshToken);
-
-    const user = await this.usersService.findById(payload.sub);
-
-    if (!user) {
-      throw new UnauthorizedException(AUTH_MESSAGES.INVALID_REFRESH_TOKEN);
-    }
-
+  async refresh(
+    userId: string,
+    tokenId: string,
+    rawRefreshToken: string,
+  ): Promise<AuthResponseDto> {
     const storedToken = await this.prisma.refreshToken.findFirst({
       where: {
-        userId: user.id,
+        id: tokenId,
+        userId,
         revokedAt: null,
-        expiresAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
       },
     });
 
@@ -89,8 +80,12 @@ export class AuthService {
       throw new UnauthorizedException(AUTH_MESSAGES.INVALID_REFRESH_TOKEN);
     }
 
+    if (storedToken.expiresAt <= new Date()) {
+      throw new UnauthorizedException(AUTH_MESSAGES.REFRESH_TOKEN_EXPIRED);
+    }
+
     const isMatch = await bcrypt.compare(
-      dto.refreshToken,
+      rawRefreshToken,
       storedToken.tokenHash,
     );
 
@@ -107,6 +102,8 @@ export class AuthService {
       },
     });
 
+    const user = await this.usersService.getByIdOrThrow(userId);
+
     return this.issueAuthTokens(user);
   }
 
@@ -115,9 +112,6 @@ export class AuthService {
       where: {
         userId,
         revokedAt: null,
-        expiresAt: {
-          gt: new Date(),
-        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -146,16 +140,21 @@ export class AuthService {
   }
 
   private async issueAuthTokens(user: User): Promise<AuthResponseDto> {
-    const { accessToken, refreshToken, refreshExpiresAt } =
-      await this.generateTokens(user);
+    const accessToken = await this.generateAccessToken(user);
 
+    const refreshTokenRow = await this.createRefreshTokenRow(user.id);
+    const refreshToken = await this.generateRefreshToken(
+      user,
+      refreshTokenRow.id,
+    );
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
 
-    await this.prisma.refreshToken.create({
+    await this.prisma.refreshToken.update({
+      where: {
+        id: refreshTokenRow.id,
+      },
       data: {
-        userId: user.id,
         tokenHash: refreshTokenHash,
-        expiresAt: refreshExpiresAt,
       },
     });
 
@@ -166,47 +165,49 @@ export class AuthService {
     };
   }
 
-  private async generateTokens(user: User): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    refreshExpiresAt: Date;
-  }> {
+  private async generateAccessToken(user: User): Promise<string> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
+      type: 'access',
     };
 
-    const accessToken = await this.jwtService.signAsync(payload, {
+    return this.jwtService.signAsync(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
       expiresIn:
         this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
     });
+  }
 
+  private async generateRefreshToken(
+    user: User,
+    tokenId: string,
+  ): Promise<string> {
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      type: 'refresh',
+      jti: tokenId,
+    };
+
+    return this.jwtService.signAsync(payload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn:
+        this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d',
+    });
+  }
+
+  private async createRefreshTokenRow(userId: string): Promise<RefreshToken> {
     const refreshExpiresIn =
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d';
 
-    const refreshToken = await this.jwtService.signAsync(payload, {
-      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn: refreshExpiresIn,
+    return this.prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash: '',
+        expiresAt: this.calculateExpirationDate(refreshExpiresIn),
+      },
     });
-
-    const refreshExpiresAt = this.calculateExpirationDate(refreshExpiresIn);
-
-    return {
-      accessToken,
-      refreshToken,
-      refreshExpiresAt,
-    };
-  }
-
-  private async verifyRefreshToken(token: string): Promise<JwtPayload> {
-    try {
-      return await this.jwtService.verifyAsync<JwtPayload>(token, {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      });
-    } catch {
-      throw new UnauthorizedException(AUTH_MESSAGES.INVALID_REFRESH_TOKEN);
-    }
   }
 
   private calculateExpirationDate(expiresIn: string): Date {
@@ -232,8 +233,7 @@ export class AuthService {
       return new Date(now.getTime() + seconds * 1000);
     }
 
-    const fallbackDays = 7;
-    return new Date(now.getTime() + fallbackDays * 24 * 60 * 60 * 1000);
+    return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   }
 
   private toUserInfoDto(user: User): UserInfoResponseDto {
