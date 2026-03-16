@@ -6,7 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { RefreshToken, User } from '@prisma/client';
+import type { User, RefreshToken } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { AUTH_MESSAGES } from './auth.constants';
@@ -15,7 +15,7 @@ import { RefreshTokenRequestDto } from './dto/request/refresh-token-request.dto'
 import { SignupRequestDto } from './dto/request/signup-request.dto';
 import { AuthResponseDto } from './dto/response/auth.response.dto';
 import { UserInfoResponseDto } from './dto/response/user-info.response.dto';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
+import { JwtPayload } from '../utils/interfaces/jwt-payload.interface';
 
 @Injectable()
 export class AuthService {
@@ -38,7 +38,7 @@ export class AuthService {
     const user = await this.usersService.createUser({
       email: dto.email,
       passwordHash,
-      nickname: dto.nickname,
+      nickname: dto.nickName,
     });
 
     return this.issueAuthTokens(user);
@@ -172,10 +172,12 @@ export class AuthService {
       type: 'access',
     };
 
-    return this.jwtService.signAsync(payload, {
+    return this.jwtService.signAsync<JwtPayload>(payload, {
       secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-      expiresIn:
+      expiresIn: parseInt(
         this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
+        10,
+      ),
     });
   }
 
@@ -190,10 +192,12 @@ export class AuthService {
       jti: tokenId,
     };
 
-    return this.jwtService.signAsync(payload, {
+    return this.jwtService.signAsync<JwtPayload>(payload, {
       secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-      expiresIn:
+      expiresIn: parseInt(
         this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d',
+        10,
+      ),
     });
   }
 
@@ -238,7 +242,6 @@ export class AuthService {
 
   private toUserInfoDto(user: User): UserInfoResponseDto {
     return {
-      id: user.id,
       email: user.email,
       nickname: user.nickname,
     };

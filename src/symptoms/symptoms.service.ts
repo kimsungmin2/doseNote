@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { SymptomRecord, SymptomType } from '@prisma/client';
+import type { SymptomRecord, SymptomType } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSymptomRequestDto } from './dto/request/create-symptom.request.dto';
 import { UpdateSymptomRequestDto } from './dto/request/update-symptom.request.dto';

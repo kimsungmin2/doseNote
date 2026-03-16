@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { MedicationProfile, Prisma } from '@prisma/client';
+import { Prisma, type MedicationProfile } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateMedicationRequestDto } from './dto/request/create-medication.request.dto';
 import { UpdateMedicationRequestDto } from './dto/request/update-medication.request.dto';
@@ -40,7 +40,6 @@ export class MedicationsService {
       return this.toResponseDto(medication);
     });
   }
-
   async findAll(userId: string): Promise<MedicationResponseDto[]> {
     const medications = await this.prisma.medicationProfile.findMany({
       where: {

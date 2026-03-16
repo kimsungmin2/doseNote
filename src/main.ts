@@ -17,11 +17,14 @@ async function bootstrap() {
     }),
   );
 
+  app.enableCors();
+
   setupSwagger(app);
 
   const prismaService = app.get(PrismaService);
   await prismaService.enableShutdownHooks(app);
 
   await app.listen(3000);
+  console.log('Server is running on port 3000');
 }
 bootstrap();

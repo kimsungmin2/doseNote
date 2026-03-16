@@ -16,9 +16,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CurrentUserData } from '../auth/interfaces/current-user.interface';
+import { CurrentUser } from '../utils/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../utils/guards/jwt-auth.guard';
+import { CurrentUserData } from '../utils/interfaces/current-user.interface';
 import { CreateInjectionRequestDto } from './dto/request/create-injection.request.dto';
 import { UpdateInjectionRequestDto } from './dto/request/update-injection.request.dto';
 import { InjectionResponseDto } from './dto/response/injection.response.dto';
