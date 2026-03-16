@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, WeightRecord } from '@prisma/client';
+import { Prisma, type WeightRecord } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWeightRequestDto } from './dto/request/create-weight.request.dto';
 import { UpdateWeightRequestDto } from './dto/request/update-weight.request.dto';

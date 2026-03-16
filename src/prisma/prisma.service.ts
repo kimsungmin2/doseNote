@@ -1,14 +1,23 @@
 import { INestApplication, Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
+  constructor() {
+    super({
+      adapter: new PrismaPg({
+        connectionString: process.env.DATABASE_URL!,
+      }),
+    });
+  }
+
   async onModuleInit(): Promise<void> {
     await this.$connect();
   }
 
   async enableShutdownHooks(app: INestApplication): Promise<void> {
-    this.$on('beforeExit', async () => {
+    this.$on('query' as any, async () => {
       await app.close();
     });
   }

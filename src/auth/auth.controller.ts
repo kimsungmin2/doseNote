@@ -15,16 +15,16 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { CurrentUser } from './decorators/current-user.decorator';
+import { CurrentUser } from '../utils/decorators/current-user.decorator';
 import { LoginRequestDto } from './dto/request/login-request.dto';
 import { RefreshTokenRequestDto } from './dto/request/refresh-token-request.dto';
 import { SignupRequestDto } from './dto/request/signup-request.dto';
 import { AuthResponseDto } from './dto/response/auth.response.dto';
 import { LogoutResponseDto } from './dto/response/logout.response.dto';
 import { UserInfoResponseDto } from './dto/response/user-info.response.dto';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
-import { CurrentUserData } from './interfaces/current-user.interface';
+import { JwtAuthGuard } from '../utils/guards/jwt-auth.guard';
+import { JwtRefreshGuard } from '../utils/guards/jwt-refresh.guard';
+import { CurrentUserData } from '../utils/interfaces/current-user.interface';
 
 @ApiTags('Auth')
 @Controller('auth')

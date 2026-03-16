@@ -1,26 +1,43 @@
 import { Injectable } from '@nestjs/common';
-import { CreateDashboardDto } from './dto/create-dashboard.dto';
-import { UpdateDashboardDto } from './dto/update-dashboard.dto';
+import { InjectionsService } from '../injections/injections.service';
+import { MedicationsService } from '../medications/medications.service';
+import { SymptomsService } from '../symptoms/symptoms.service';
+import { WeightsService } from '../weights/weights.service';
+import { HomeDashboardResponseDto } from './dto/response/home-dashboard.response.dto';
 
 @Injectable()
 export class DashboardService {
-  create(createDashboardDto: CreateDashboardDto) {
-    return 'This action adds a new dashboard';
-  }
+  constructor(
+    private readonly medicationsService: MedicationsService,
+    private readonly injectionsService: InjectionsService,
+    private readonly weightsService: WeightsService,
+    private readonly symptomsService: SymptomsService,
+  ) {}
 
-  findAll() {
-    return `This action returns all dashboard`;
-  }
+  async getHome(userId: string): Promise<HomeDashboardResponseDto> {
+    const activeMedication = await this.medicationsService.findActive(userId);
+    const lastInjection = await this.injectionsService.findLatest(userId);
+    const latestWeight = await this.weightsService.findLatest(userId);
+    const weightSummary = await this.weightsService.getSummary(userId);
+    const symptomSummary = await this.symptomsService.getSummary(userId);
 
-  findOne(id: number) {
-    return `This action returns a #${id} dashboard`;
-  }
+    let nextInjection = null;
 
-  update(id: number, updateDashboardDto: UpdateDashboardDto) {
-    return `This action updates a #${id} dashboard`;
-  }
+    if (activeMedication) {
+      try {
+        nextInjection = await this.injectionsService.findUpcoming(userId);
+      } catch {
+        nextInjection = null;
+      }
+    }
 
-  remove(id: number) {
-    return `This action removes a #${id} dashboard`;
+    return {
+      activeMedication,
+      lastInjection,
+      nextInjection,
+      latestWeight,
+      weightSummary,
+      symptomSummary,
+    };
   }
 }

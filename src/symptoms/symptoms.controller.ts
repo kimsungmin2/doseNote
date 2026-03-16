@@ -1,200 +1,125 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { SymptomRecord, SymptomType } from '@prisma/client';
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../utils/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../utils/guards/jwt-auth.guard';
+import { CurrentUserData } from '../utils/interfaces/current-user.interface';
 import { CreateSymptomRequestDto } from './dto/request/create-symptom.request.dto';
 import { UpdateSymptomRequestDto } from './dto/request/update-symptom.request.dto';
 import { SymptomResponseDto } from './dto/response/symptom.response.dto';
 import { SymptomSummaryResponseDto } from './dto/response/symptom-summary.response.dto';
+import { SymptomsService } from './symptoms.service';
 
-@Injectable()
-export class SymptomsService {
-  constructor(private readonly prisma: PrismaService) {}
+@ApiTags('Symptoms')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
+@Controller('symptoms')
+export class SymptomsController {
+  constructor(private readonly symptomsService: SymptomsService) {}
 
+  @ApiOperation({
+    summary: '증상 기록 생성',
+  })
+  @ApiResponse({
+    status: 201,
+    type: SymptomResponseDto,
+  })
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
   async create(
-    userId: string,
-    dto: CreateSymptomRequestDto,
+    @CurrentUser() user: CurrentUserData,
+    @Body() dto: CreateSymptomRequestDto,
   ): Promise<SymptomResponseDto> {
-    if (dto.injectionRecordId) {
-      await this.validateInjectionOwnership(userId, dto.injectionRecordId);
-    }
-
-    const symptom = await this.prisma.symptomRecord.create({
-      data: {
-        userId,
-        injectionRecordId: dto.injectionRecordId ?? null,
-        symptomType: dto.symptomType,
-        severity: dto.severity,
-        recordedAt: new Date(dto.recordedAt),
-        memo: dto.memo ?? null,
-      },
-    });
-
-    return this.toResponseDto(symptom);
+    return this.symptomsService.create(user.id, dto);
   }
 
-  async findAll(userId: string): Promise<SymptomResponseDto[]> {
-    const symptoms = await this.prisma.symptomRecord.findMany({
-      where: {
-        userId,
-        deletedAt: null,
-      },
-      orderBy: {
-        recordedAt: 'desc',
-      },
-    });
-
-    return symptoms.map((symptom) => this.toResponseDto(symptom));
+  @ApiOperation({
+    summary: '증상 기록 목록 조회',
+  })
+  @ApiResponse({
+    status: 200,
+    type: SymptomResponseDto,
+    isArray: true,
+  })
+  @Get()
+  async findAll(
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<SymptomResponseDto[]> {
+    return this.symptomsService.findAll(user.id);
   }
 
+  @ApiOperation({
+    summary: '증상 요약 조회',
+  })
+  @ApiResponse({
+    status: 200,
+    type: SymptomSummaryResponseDto,
+  })
+  @Get('summary/one')
+  async getSummary(
+    @CurrentUser() user: CurrentUserData,
+  ): Promise<SymptomSummaryResponseDto> {
+    return this.symptomsService.getSummary(user.id);
+  }
+
+  @ApiOperation({
+    summary: '증상 기록 상세 조회',
+  })
+  @ApiResponse({
+    status: 200,
+    type: SymptomResponseDto,
+  })
+  @Get(':id')
   async findOne(
-    userId: string,
-    symptomId: string,
+    @CurrentUser() user: CurrentUserData,
+    @Param('id') id: string,
   ): Promise<SymptomResponseDto> {
-    const symptom = await this.findSymptomOrThrow(userId, symptomId);
-    return this.toResponseDto(symptom);
+    return this.symptomsService.findOne(user.id, id);
   }
 
+  @ApiOperation({
+    summary: '증상 기록 수정',
+  })
+  @ApiResponse({
+    status: 200,
+    type: SymptomResponseDto,
+  })
+  @Patch(':id')
   async update(
-    userId: string,
-    symptomId: string,
-    dto: UpdateSymptomRequestDto,
+    @CurrentUser() user: CurrentUserData,
+    @Param('id') id: string,
+    @Body() dto: UpdateSymptomRequestDto,
   ): Promise<SymptomResponseDto> {
-    await this.findSymptomOrThrow(userId, symptomId);
-
-    if (dto.injectionRecordId) {
-      await this.validateInjectionOwnership(userId, dto.injectionRecordId);
-    }
-
-    const symptom = await this.prisma.symptomRecord.update({
-      where: {
-        id: symptomId,
-      },
-      data: {
-        injectionRecordId: dto.injectionRecordId,
-        symptomType: dto.symptomType,
-        severity: dto.severity,
-        recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : undefined,
-        memo: dto.memo,
-      },
-    });
-
-    return this.toResponseDto(symptom);
+    return this.symptomsService.update(user.id, id, dto);
   }
 
-  async remove(userId: string, symptomId: string): Promise<SymptomResponseDto> {
-    await this.findSymptomOrThrow(userId, symptomId);
-
-    const symptom = await this.prisma.symptomRecord.update({
-      where: {
-        id: symptomId,
-      },
-      data: {
-        deletedAt: new Date(),
-      },
-    });
-
-    return this.toResponseDto(symptom);
-  }
-
-  async getSummary(userId: string): Promise<SymptomSummaryResponseDto> {
-    const symptoms = await this.prisma.symptomRecord.findMany({
-      where: {
-        userId,
-        deletedAt: null,
-      },
-      orderBy: {
-        recordedAt: 'desc',
-      },
-    });
-
-    if (symptoms.length === 0) {
-      return {
-        topSymptoms: [],
-        averageSeverity: null,
-        recentSymptoms: [],
-      };
-    }
-
-    const frequencyMap = new Map<SymptomType, number>();
-
-    let severitySum = 0;
-
-    for (const symptom of symptoms) {
-      severitySum += symptom.severity;
-      frequencyMap.set(
-        symptom.symptomType,
-        (frequencyMap.get(symptom.symptomType) ?? 0) + 1,
-      );
-    }
-
-    const topSymptoms = Array.from(frequencyMap.entries())
-      .map(([symptomType, count]) => ({
-        symptomType,
-        count,
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
-
-    const averageSeverity =
-      Math.round((severitySum / symptoms.length) * 10) / 10;
-
-    const recentSymptoms = symptoms
-      .slice(0, 5)
-      .map((symptom) => this.toResponseDto(symptom));
-
-    return {
-      topSymptoms,
-      averageSeverity,
-      recentSymptoms,
-    };
-  }
-
-  private async findSymptomOrThrow(
-    userId: string,
-    symptomId: string,
-  ): Promise<SymptomRecord> {
-    const symptom = await this.prisma.symptomRecord.findFirst({
-      where: {
-        id: symptomId,
-        userId,
-        deletedAt: null,
-      },
-    });
-
-    if (!symptom) {
-      throw new NotFoundException('증상 기록을 찾을 수 없습니다.');
-    }
-
-    return symptom;
-  }
-
-  private async validateInjectionOwnership(
-    userId: string,
-    injectionRecordId: string,
-  ): Promise<void> {
-    const injection = await this.prisma.injectionRecord.findFirst({
-      where: {
-        id: injectionRecordId,
-        userId,
-        deletedAt: null,
-      },
-    });
-
-    if (!injection) {
-      throw new NotFoundException('연결할 주사 기록을 찾을 수 없습니다.');
-    }
-  }
-
-  private toResponseDto(symptom: SymptomRecord): SymptomResponseDto {
-    return {
-      id: symptom.id,
-      injectionRecordId: symptom.injectionRecordId,
-      symptomType: symptom.symptomType,
-      severity: symptom.severity,
-      recordedAt: symptom.recordedAt,
-      memo: symptom.memo,
-      createdAt: symptom.createdAt,
-      updatedAt: symptom.updatedAt,
-    };
+  @ApiOperation({
+    summary: '증상 기록 삭제',
+  })
+  @ApiResponse({
+    status: 200,
+    type: SymptomResponseDto,
+  })
+  @Delete(':id')
+  async remove(
+    @CurrentUser() user: CurrentUserData,
+    @Param('id') id: string,
+  ): Promise<SymptomResponseDto> {
+    return this.symptomsService.remove(user.id, id);
   }
 }
